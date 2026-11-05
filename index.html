@@ -634,8 +634,13 @@ const CONF_COLOR = { "ACC": "var(--acc)", "BIG 12": "var(--b12)", "BIG TEN": "va
 const teamConf = {};
 for (const [c, ts] of Object.entries(D.conferences)) for (const t of ts) teamConf[t] = c;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
-const NICKNAMES = {};  // display-only renames (user can add some back here)
+const NICKNAMES = { "Washington": "Washington has conceded the game" };  // display-only renames (user can add some back here)
 const label = t => NICKNAMES[t] || t;
+// a renamed team inside a sentence ("2027 Wk 9 vs Washington", "W 42-21 vs Washington"): whole names only, never a player
+// ("J.Washington") or another school that starts with it ("Washington State", "Washington St.")
+const NICK_ALT = Object.keys(NICKNAMES).map(k => k.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&")).join("|");
+const NICK_RE = NICK_ALT ? new RegExp("(^|[^\\w.])(" + NICK_ALT + ")(?![\\w&]| St)", "g") : null;
+const say = s => NICK_RE && s ? String(s).replace(NICK_RE, (m, pre, t) => pre + NICKNAMES[t]) : s;
 // Current Top 25 (team -> rank) and the week that poll is for; game cards show ranks only for that week
 const T25 = Object.fromEntries(((D.weekly && D.weekly.top25 && D.weekly.top25.rows) || []).map(r => [r[1], r[0]]));
 const T25_WEEK = D.weekly && D.weekly.top25 ? D.weekly.top25.week : null;
@@ -850,7 +855,7 @@ function top25Table() {
   return `<div class="tbl-wrap"><table><thead><tr>${head}</tr></thead><tbody>${rows.map(r => `<tr class="${r[1] === D.myTeam ? "mine" : ""}">
       <td><b class="num">${r[0]}</b> ${move(r)}</td><td class="l">${teamLink(r[1])}${r[3] ? ` <span class="rk">(${r[3]})</span>` : ""}</td>
       <td>${esc(r[4] || "")}</td>${pts ? `<td class="num">${r[5] != null ? fmt(r[5]) : ""}</td>` : ""}<td class="opt">${r[2] ?? (anyLw ? "NR" : "–")}</td>
-      <td class="l opt">${esc(r[6] || "")}</td><td class="l opt">${esc(r[7] || "")}</td></tr>`).join("")}</tbody></table></div>`;
+      <td class="l opt">${esc(say(r[6] || ""))}</td><td class="l opt">${esc(say(r[7] || ""))}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function heismanPanel() {
   const H = D.weekly && D.weekly.heisman;
@@ -865,7 +870,7 @@ function potwCards() {
   return `<div class="chips">${POTW_SCOPES.map(([k, l]) => `<button type="button" data-potw="${k}" aria-pressed="${k === rankState.scope}">${l}</button>`).join("")}</div>
     <div class="grid2">${cards.map(c => `<section class="panel potw"><div class="potw-side">${esc(c.side)}</div>
       <div class="potw-name">${esc(c.name)} <span class="rk">${esc(c.pos || "")}</span></div>
-      <div class="tm">${c.team ? tname(c.team) : ""} ${esc(c.opp || "")}</div>
+      <div class="tm">${c.team ? tname(c.team) : ""} ${esc(say(c.opp || ""))}</div>
       <div class="potw-stats num">${esc(c.stats || "")}</div></section>`).join("") || `<p class="empty">No awards read for this filter.</p>`}</div>`;
 }
 function rankingsPage() {
@@ -893,7 +898,7 @@ function recordsGrid() {
   return `<div class="grid3 records">${Object.entries(lists).map(([label, rows]) => {
     const show = rows.filter(r => recState.scope === "National" || teamConf[r[2]] === recState.scope).slice(0, 10);
     return `<section class="panel leader"><h4>${esc(label)}</h4>${show.map((r, i) => `<div class="lrow ${r[5] != null ? "clickable" : ""}" ${r[5] != null ? `data-player="${esc(r[2])}|${esc(r[0])}|${esc(r[1])}|${r[5]}" title="Stats for this game"` : ""}>
-      <span class="n">${i + 1}</span><span class="who">${playerBtn(r[2], r[0], r[1], r[5])}<span class="tm">${esc(r[1])} · ${tname(r[2])} · ${esc(r[3])}</span></span>
+      <span class="n">${i + 1}</span><span class="who">${playerBtn(r[2], r[0], r[1], r[5])}<span class="tm">${esc(r[1])} · ${tname(r[2])} · ${esc(say(r[3]))}</span></span>
       <span class="v num">${fmt(r[4])}</span></div>`).join("") || `<div class="empty">No stats yet</div>`}</section>`; }).join("")}</div>`;
 }
 
@@ -1293,8 +1298,8 @@ function classTab() {
       <label class="q">Search<input type="search" id="rc-q" placeholder="Name or hometown" value="${esc(rcState.q)}" autocomplete="off"></label>
       <label>Stars<select id="rc-stars">${[["", "Any"], ["5", "5 stars"], ["4", "4 stars"], ["3", "3 stars"], ["2", "2 stars or fewer"]].map(([v, l]) => opt(v, l, rcState.stars)).join("")}</select></label>
       <label>Status<select id="rc-status">${[["", "Any"], ["open", "Uncommitted"], ["committed", "Committed / verbal"]].map(([v, l]) => opt(v, l, rcState.status)).join("")}</select></label>
-      <label>School<select id="rc-school">${opt("", "Any school", rcState.school)}<optgroup label="League">${ours.map(s => opt(s, s, rcState.school)).join("")}</optgroup>
-        <optgroup label="Other schools">${rest.map(s => opt(s, s, rcState.school)).join("")}</optgroup></select></label>
+      <label>School<select id="rc-school">${opt("", "Any school", rcState.school)}<optgroup label="League">${ours.map(s => opt(s, label(s), rcState.school)).join("")}</optgroup>
+        <optgroup label="Other schools">${rest.map(s => opt(s, label(s), rcState.school)).join("")}</optgroup></select></label>
     </div>
     <div class="chips">${Object.keys(REC_POS).map(k => `<button type="button" data-rcpos="${esc(k)}" aria-pressed="${k === rcState.pos}">${esc(k)}</button>`).join("")}</div>
     <div id="rc-list">${classList()}</div>`;
@@ -1319,7 +1324,7 @@ function classList() {
   const head = `<div class="rrow head">${REC_HEAD.map(([h, k, cls]) => k ? `<span class="${cls} sortable" data-rcsort="${k}" ${col === k ? `aria-sort="${dir < 0 ? "descending" : "ascending"}"` : ""}>${h}</span>`
     : `<span class="${cls}">${h}</span>`).join("")}</div>`;
   const sch = r => r.schools.slice(0, 5).map((s, i) => s[0] && D.logos && D.logos[s[0]]
-    ? `<img class="tlogo ${r.commit && i ? "dim" : ""}" src="${D.logos[s[0]]}" alt="${esc(s[0])}" title="${esc(s[0])}" width="26" height="26" loading="lazy">`
+    ? `<img class="tlogo ${r.commit && i ? "dim" : ""}" src="${D.logos[s[0]]}" alt="${esc(label(s[0]))}" title="${esc(label(s[0]))}" width="26" height="26" loading="lazy">`
     : `<span class="nolg" title="${esc(s[0] || "School not recognized")}"></span>`).join("");
   return `<div class="rc-count">${rows.length === RECRUITS.length ? `${RECRUITS.length} recruits` : `${rows.length} of ${RECRUITS.length} recruits`}
       · the top ${RECRUITS.length ? Math.max(...RECRUITS.map(r => r.rank)) : 0} nationally</div>
@@ -1434,7 +1439,7 @@ function coachCard([t, c]) {
       : `<span class="av ph${c.user ? "" : " open"}" title="${c.user ? "League member" : "CPU coach: open for a new owner"}">${USER_SVG}</span>`)
       + (logo ? `<img class="badge" src="${logo}" alt="">` : "");
   const cell = (label, v, sub) => `<div><b>${esc(v ?? "–")}${sub ? `<small>${esc(sub)}</small>` : ""}</b><span>${esc(label)}</span></div>`;
-  const dl = [["Offense", c.off], ["Defense", c.def], ["Alma mater", c.alma], ["Titles", `${c.conf ?? 0} conference · ${c.nc ?? 0} national`],
+  const dl = [["Offense", c.off], ["Defense", c.def], ["Alma mater", c.alma && label(c.alma)], ["Titles", `${c.conf ?? 0} conference · ${c.nc ?? 0} national`],
     ["Winning seasons", c.winsea], ["Cost", c.cost != null ? fmt(c.cost) : null]].filter(([, v]) => v != null && v !== "");
   return `<article class="panel coach" style="--c:${col}">
     <div class="co-head"><div class="co-art">${art}</div>
